@@ -1,0 +1,18 @@
+{
+  "name": "pending-you",
+  "displayName": "Pending You",
+  "version": "2.1.0",
+  "description": "Ask your person through Pending You when a decision is theirs and they aren’t there, and hear their answer back.",
+  "author": {
+    "name": "RecordPlane",
+    "url": "https://www.pendingyou.com"
+  },
+  "homepage": "https://www.pendingyou.com",
+  "repository": "https://github.com/recordplane/pendingyou-plugin",
+  "keywords": [
+    "pending-you",
+    "questions",
+    "approvals",
+    "human-in-the-loop"
+  ]
+}

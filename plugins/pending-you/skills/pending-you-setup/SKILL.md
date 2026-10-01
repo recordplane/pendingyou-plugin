@@ -1,0 +1,20 @@
+---
+name: pending-you-setup
+description: Set up Pending You here, or check that it’s set up (one connection, check-ins and a test question). Use when your person says “set up Pending You” or asks to connect Pending You.
+---
+
+# Set up Pending You
+
+From Pending You’s guide 2.1.0. Read the full guide through Pending You, with `whoami` and `guide` true, so there’s no web fetch to approve (or at https://www.pendingyou.com/skill.md).
+
+The plugin (Claude Cowork and Claude Code) brings the connection to `https://www.pendingyou.com/mcp` and the stub as its skill, so don’t add either yourself. Its setup is a second skill, `pending-you-setup`: your person says “set up Pending You” (in Claude Code, `/pending-you:pending-you-setup` works too), and it does this:
+
+1. Keep one connection. In Claude Code, run `claude mcp list`: a Pending You server whose name doesn’t start with `plugin:` was added by hand, and it overrides the plugin’s. `claude mcp get <name>` shows its scope and the command that removes it. Tell your person to remove it with `claude mcp remove <name> -s <scope>` (usually `claude mcp remove pendingyou -s user`), and to delete a saved `~/.claude/skills/pendingyou` folder, since the plugin carries the skill. Then they restart Claude Code (`/exit`, then `claude --continue`) and say “set up Pending You” again. In Cowork, if Claude’s settings also have a custom Pending You connector, ask them to remove it.
+2. Call `whoami` with your `name`. If it works and `app.setUp` is true, your app is already set up: introduce yourself in one line, say that when something is theirs to decide you’ll ask here and in Pending You at once, and stop.
+3. No Pending You tools, or they aren’t signed in: in Cowork, ask your person to open the plugin’s Connectors tab (Customize › Plugins › Pending You), connect Pending You, sign in and click Allow. In Claude Code, ask them to run `/mcp`, choose `plugin:pending-you:pendingyou` and Authenticate. Then they say “set up Pending You” again.
+4. Say up front what they’ll approve (see above): in Cowork, “Always allow” for Pending You’s tools, the scheduled task, and “Allow for all scheduled runs” at its first run; in Claude Code, “Yes, and don’t ask again” the first time a Pending You tool asks. Then, in Cowork, create a Cowork scheduled task that checks Pending You every hour, 7 AM–9 PM their time, and ends quietly when nothing is waiting, and report `source` “claude” with `hears` “hourly” and its `schedule` (“by-hand” if you couldn’t make one). In Claude Code, report `source` “claude-code”, `name` “Claude Code” and `hears` “while-working”. Report `skillSaved` true: the plugin keeps the skill.
+5. Finish as in Report what you set up: `report_setup`, then the test question in `testAreaId`.
+
+## Report what you set up
+
+Right after setup, and whenever how you hear answers changes, call `report_setup` with your `source`, your `name`, `skillVersion` “2.1”, whether the stub is saved for future conversations (`skillSaved`), how you hear answers (`hears`), the check-in you actually created (`schedule`), anything you couldn’t do yourself (`missing`), and, if you can’t open PDFs or text files, `accepts` with what you can (`image`, `pdf`, `text`), so their file picker offers only those. Report only what exists: a stub loaded for this conversation only isn’t saved, and a check-in you only planned isn’t a schedule. `ready` true means you’re configured; if it comes back false, tell them what’s missing in plain words. Then send them a test question through Pending You, with `areaId` set to the `testAreaId` it returned (Getting started, which tidies itself away once setup is done) and a `session` of just `{ "label": "Setup test" }`: no computer name or folder. When their answer arrives, pick it up with `ack_answer`; that makes you verified, and their setup page shows all four steps done: Connected, Checks scheduled, Test delivered, Answer received.

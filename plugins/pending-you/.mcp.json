@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pendingyou": {
+      "type": "http",
+      "url": "https://www.pendingyou.com/mcp"
+    }
+  }
+}
