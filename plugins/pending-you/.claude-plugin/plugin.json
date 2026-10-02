@@ -1,8 +1,8 @@
 {
   "name": "pending-you",
   "displayName": "Pending You",
-  "version": "2.1.0",
-  "description": "Ask your person through Pending You when a decision is theirs and they aren’t there, and hear their answer back.",
+  "version": "2.14.0",
+  "description": "One place for everything your AI agents are waiting on you for. When a decision is yours, Claude asks in the conversation and on a Pending You card at once, and the first answer wins.",
   "author": {
     "name": "RecordPlane",
     "url": "https://www.pendingyou.com"

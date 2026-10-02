@@ -1,6 +1,6 @@
 # Pending You for Claude
 
-The Pending You plugin for Claude Cowork and Claude Code. Pending You is one queue for everything your AI assistants are waiting on you for.
+The Pending You plugin for Claude Cowork and Claude Code. Pending You is one place for everything your AI agents are waiting on you for.
 
 ## Install
 
