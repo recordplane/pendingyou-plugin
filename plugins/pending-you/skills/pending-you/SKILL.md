@@ -10,3 +10,5 @@ Pending You (https://www.pendingyou.com/mcp) is your person’s queue. Every que
 Each task: `whoami` with your name (no tools: restart, don’t sign in again). On a `notice`: `whoami` with `guide` true (or https://www.pendingyou.com/skill.md), then `report_setup`.
 
 To set Pending You up here, or when your person says “set up Pending You”, follow the `pending-you-setup` skill.
+
+In Claude Code 2.1.287 or later, this plugin wakes you when your person answers a card you posted, even while you’re idle: no `npx pendingyou hold` to run.
