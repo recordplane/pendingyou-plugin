@@ -15,7 +15,9 @@
 // - starts one turn when it's the agent's move (an answer, a message, a fallback that ran, a card closed under it),
 //   once per change, several cards in one prompt;
 // - shows "N waiting on you" under the prompt (Claude Code puts the plugin's name in front: "⚠ pending-you: 1 waiting
-//   on you").
+//   on you");
+// - in the command line's copy only (`npx pendingyou init`, 0.11.0), starts the turn that finishes setting Pending You
+//   up, once, when a session opens on a computer init connected and Pending You says Claude Code isn't set up yet.
 /** How often register.ts looks at what's due. */
 export const TICK_MS = 5000;
 /** Each card is checked every 20 seconds while it changed in the last 30 minutes, then every minute. */
@@ -596,4 +598,55 @@ export function claimLease(value, me, now) {
     if (lease && lease.holder === me && lease.until - now > LEASE_MS - RENEW_MS)
         return null;
     return `${me} ${now + LEASE_MS}`;
+}
+/** The command line's copy of the mod (`npx pendingyou init`): the only one that starts setup. The plugin has a skill. */
+export const CLI_COPY = 'pendingyou-wake';
+/** The server init adds Pending You as, whose whoami says whether Claude Code is set up here. */
+export const SETUP_SERVER = 'pendingyou';
+/** How long after a session opens it asks, how long between tries while the server connects, and how many tries. */
+export const SETUP_AFTER_MS = 3000;
+export const SETUP_RETRY_MS = 10_000;
+export const SETUP_TRIES = 3;
+/** The most sessions it starts setup in, and how long after one before another may (two opened together, say). */
+export const SETUP_SESSIONS = 3;
+export const SETUP_QUIET_MS = 10 * 60_000;
+/** The record as the store holds it; a fresh one for anything else. */
+export function readSetup(value) {
+    if (!isObject(value))
+        return { done: false, sessions: [], lastAt: 0 };
+    return {
+        done: value.done === true,
+        sessions: Array.isArray(value.sessions)
+            ? value.sessions.filter((id) => typeof id === 'string').slice(-SETUP_SESSIONS)
+            : [],
+        lastAt: count(value.lastAt) ?? 0,
+    };
+}
+/** What whoami's answer says: Claude Code is set up here (true), isn't (false), or nothing to go on (null). */
+export function setUpOf(output) {
+    const app = output && isObject(output.app) ? output.app : null;
+    return typeof app?.setUp === 'boolean' ? app.setUp : null;
+}
+/**
+ * Whether this session should start setup now: not done, not started in it already, in fewer than SETUP_SESSIONS
+ * sessions so far, and none started in the last SETUP_QUIET_MS (another session may be doing it).
+ */
+export function setupNeeded(record, sessionId, now) {
+    return (!record.done &&
+        !record.sessions.includes(sessionId) &&
+        record.sessions.length < SETUP_SESSIONS &&
+        now - record.lastAt >= SETUP_QUIET_MS);
+}
+/** The record once this session has started setup. */
+export const prompted = (record, sessionId, now) => ({
+    ...record,
+    sessions: [...record.sessions, sessionId].slice(-SETUP_SESSIONS),
+    lastAt: now,
+});
+/**
+ * The turn that finishes setting up, as the session reads it: the sentence a person would say (the command line's
+ * FINISH_SAY; a test holds them equal), then exactly what to do, so it needs nothing else.
+ */
+export function setupPrompt() {
+    return 'Finish setting up Pending You: it’s connected here already. Call whoami with your name and guide true; report_setup with source claude-code, skillSaved true, hears instant and the guide’s skillVersion; then send your test question to its testAreaId. Nothing to add, install or approve. If whoami says app.setUp is true, another session did it: just introduce yourself.';
 }

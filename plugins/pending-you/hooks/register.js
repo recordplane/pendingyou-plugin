@@ -14,7 +14,12 @@
 //
 // One copy acts per session: the plugin's and the command line's copy can both load, and they keep separate stores, so
 // the lease is a variable in the session's own environment, which every mod in the process shares.
-import { argumentsOf, blockedNote, cardTool, checked, claimLease, dueCards, emptyBook, failed, holdOf, holdReply, isRefusal, isStale, isWaitingOnYou, learn, leaseHolder, momentOf, put, readBook, resultObject, settle, stateOf, statusText, TICK_MS, told, toTell, untold, wakeText, } from "./wake.js";
+//
+// The command line's copy (0.11.0) also finishes setting up by itself: a few seconds after an interactive session opens,
+// if Claude Code may call whoami without asking anyone, it does (no name), and when Pending You says Claude Code isn't
+// set up here, it starts one turn with the setup prompt once the session is idle. Once per session, in at most three
+// sessions, never two within ten minutes, and never again once whoami says it's set up (wake.ts's setupNeeded).
+import { argumentsOf, blockedNote, CLI_COPY, cardTool, checked, claimLease, dueCards, emptyBook, failed, holdOf, holdReply, isRefusal, isStale, isWaitingOnYou, learn, leaseHolder, momentOf, prompted, put, readBook, readSetup, resultObject, SETUP_AFTER_MS, SETUP_RETRY_MS, SETUP_SERVER, SETUP_TRIES, settle, setUpOf, setupNeeded, setupPrompt, stateOf, statusText, TICK_MS, told, toTell, untold, wakeText, } from "./wake.js";
 /** After a prompt that didn't go, how long before the mod tries again. */
 const RETRY_MS = 60_000;
 /** What the mod holds while its module is loaded. The cards themselves are kept in the store. */
@@ -37,6 +42,8 @@ const live = {
     verified: new Set(),
     /** Servers the agent was told it can't be woken through. */
     noted: new Set(),
+    /** Pending You said Claude Code isn't set up here: start the setup turn once the session is idle. */
+    setupDue: false,
 };
 const keyOf = (sessionId) => `session:${sessionId}`;
 /** A server Claude Code refuses checks on, while the session has a card there. */
@@ -148,11 +155,61 @@ async function prune($) {
             await $.store.delete(key);
     }
 }
+/** Remembers in the store that Pending You says Claude Code is set up here: no setup turn again. */
+async function setupDone($) {
+    const record = readSetup(await $.store.get('setup'));
+    if (!record.done)
+        await $.store.set('setup', { ...record, done: true });
+    live.setupDue = false;
+}
+/** Starts the setup turn, once the session is idle, unless another session has meanwhile (setupNeeded). */
+async function deliverSetup($) {
+    if (!live.setupDue || live.busy)
+        return;
+    live.setupDue = false;
+    const now = await $.clock.now();
+    const record = readSetup(await $.store.get('setup'));
+    if (!setupNeeded(record, live.sessionId, now))
+        return;
+    await $.store.set('setup', prompted(record, live.sessionId, now));
+    $.prompt.submit({ text: setupPrompt() }).catch(() => { });
+}
+/**
+ * Asks Pending You whether Claude Code is set up here (whoami, no name, only when Claude Code allows it without asking),
+ * trying again while the server is still connecting. Not set up: the setup turn is due.
+ */
+async function checkSetup($, attempt) {
+    try {
+        if (!setupNeeded(readSetup(await $.store.get('setup')), live.sessionId, await $.clock.now()))
+            return;
+        const decided = await $.tool.check({ tool: `mcp__${SETUP_SERVER}__whoami`, input: {} });
+        if (decided.decision !== 'allow')
+            return;
+        let setUp = null;
+        try {
+            setUp = setUpOf(resultObject(await $.mcp.call(SETUP_SERVER, 'whoami', {})));
+        }
+        catch { }
+        if (setUp === null) {
+            if (attempt < SETUP_TRIES)
+                $.clock.after(SETUP_RETRY_MS, () => checkSetup($, attempt + 1));
+            return;
+        }
+        if (setUp)
+            await setupDone($);
+        else {
+            live.setupDue = true;
+            await deliverSetup($);
+        }
+    }
+    catch { }
+}
 async function tick($) {
     if (live.ticking || !live.sessionId)
         return;
     live.ticking = true;
     try {
+        await deliverSetup($);
         if (!live.pruned) {
             live.pruned = true;
             await prune($);
@@ -185,7 +242,7 @@ function soon($) {
     }
     catch { }
 }
-async function start($) {
+async function start($, e) {
     live.me = $.plugin.name;
     live.sessionId = await $.session.id();
     live.book = readBook(await $.store.get(keyOf(live.sessionId)));
@@ -193,6 +250,9 @@ async function start($) {
     live.timer?.cancel();
     live.timer = $.clock.every(TICK_MS, () => tick($));
     soon($);
+    // Finishing setup: the command line's copy only, in a session someone is at (never `claude -p`).
+    if ($.plugin.name === CLI_COPY && e.isInteractive !== false)
+        $.clock.after(SETUP_AFTER_MS, () => checkSetup($, 1));
 }
 /** After /clear, /resume or /branch: the session's id changed, and its cards with it (a branch keeps them). */
 async function switchSession($, e) {
@@ -213,6 +273,9 @@ async function observe($, e, result) {
     if (!found || !live.sessionId)
         return result;
     const output = resultObject(result);
+    // The session's own whoami saying Claude Code is set up here: the setup turn is never needed again.
+    if ($.plugin.name === CLI_COPY && found.tool === 'whoami' && setUpOf(output) === true)
+        await setupDone($);
     const before = live.book;
     live.book = learn(live.book, { ...found, input: argumentsOf(e), output }, await $.clock.now());
     if (live.book === before)
@@ -268,7 +331,7 @@ async function answerHold($, e) {
 export function register(on) {
     on('session.start', async ($, e, next) => {
         try {
-            await start($);
+            await start($, e);
         }
         catch { }
         return next(e);

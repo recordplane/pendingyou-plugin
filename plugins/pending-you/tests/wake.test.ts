@@ -3,6 +3,13 @@
 // in the repo (packages/claude-plugin/test/wake.test.ts); this checks the wiring. Synthetic data only.
 import { expect, mock, test } from 'claude-code/testing'
 
+/**
+ * Whether this build is the command line's copy (`npx pendingyou init`, 0.11.0), which alone starts the setup turn (the
+ * plugin has its setup skill): the copy names itself in the session's lease as it starts.
+ */
+const cliCopy = (env: Map<string, string>) =>
+  env.get('PENDINGYOU_WAKE_OWNER')?.split(' ')[0] === 'pendingyou-wake'
+
 const SERVER = 'plugin_pending-you_pendingyou'
 const REQ = 'req_00000000000000000001'
 const NAME = 'billing-webhooks'
@@ -15,7 +22,7 @@ type Card = { status: string; turn: string; version: number }
 /** Claude Code's answers: the session, its store and environment, the status line, prompts, and Pending You. */
 function world(
   on: Parameters<Parameters<typeof test>[1]>[1],
-  options: { refuse?: boolean; lease?: string } = {},
+  options: { refuse?: boolean; lease?: string; setUp?: boolean } = {},
 ) {
   const clock = mock.clock(on, { now: START })
   const store = new Map<string, unknown>()
@@ -28,6 +35,8 @@ function world(
     prompts: [] as string[],
     status: [] as (string | undefined)[],
     holds: 0,
+    /** whoami calls the mod made itself: the command line's copy asking whether setup is finished. */
+    whoami: 0,
   }
   on('session.start', () => ({ cwd: '/work' }))
   on('session.id', () => ({ value: 'ses-1' }))
@@ -63,6 +72,11 @@ function world(
   )
   on('mcp.call', (_, e) => {
     if (options.refuse) throw new Error('the mod called a tool Claude Code had not allowed')
+    if (e.tool === 'whoami') {
+      seen.whoami++
+      const body = { app: { name: 'Claude Code', setUp: options.setUp ?? true } }
+      return { value: { content: [{ type: 'text', text: JSON.stringify(body) }], isError: false } }
+    }
     seen.checks.push({ server: e.server, tool: e.tool, ...e.args })
     const body = { requestId: REQ, ...card, messages: [], cursor: '', pollAfterSeconds: 30 }
     return { value: { content: [{ type: 'text', text: JSON.stringify(body) }], isError: false } }
@@ -195,4 +209,39 @@ test('leaves the session to the copy that holds it', async ($, on) => {
   // Its hold is the other copy's to answer.
   await $.tool.call({ tool: 'Bash', command: `npx pendingyou hold ${REQ}` })
   expect(seen.holds).toBe(1)
+})
+
+test('the command line’s copy starts the setup turn once when Pending You says it isn’t set up; the plugin never does', async ($, on) => {
+  const { clock, env, seen, store } = world(on, { setUp: false })
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
+  await clock.advance(5000)
+  if (!cliCopy(env)) {
+    expect(seen.whoami).toBe(0)
+    expect(seen.prompts).toEqual([])
+    return
+  }
+  expect(seen.whoami).toBe(1)
+  expect(seen.prompts).toHaveLength(1)
+  expect(seen.prompts[0]).toContain('Finish setting up Pending You: it’s connected here already.')
+  expect(seen.prompts[0]).toContain('report_setup with source claude-code')
+  expect(JSON.stringify(store.get('setup'))).toContain('ses-1')
+  // Once: nothing more in this session, however long it runs.
+  await clock.advance(120_000)
+  expect(seen.prompts).toHaveLength(1)
+})
+
+test('the command line’s copy leaves a computer that’s set up alone, and remembers it is', async ($, on) => {
+  const { clock, env, seen, store } = world(on, { setUp: true })
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
+  await clock.advance(5000)
+  expect(seen.prompts).toEqual([])
+  if (cliCopy(env)) expect(JSON.stringify(store.get('setup'))).toContain('"done":true')
+})
+
+test('no copy starts a turn of its own in a session nobody is at (claude -p)', async ($, on) => {
+  const { clock, seen } = world(on, { setUp: false })
+  await $.session.start({ surface: 'terminal', isInteractive: false, cwd: '/work' })
+  await clock.advance(5000)
+  expect(seen.whoami).toBe(0)
+  expect(seen.prompts).toEqual([])
 })
