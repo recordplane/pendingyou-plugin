@@ -1,7 +1,7 @@
 {
   "name": "pending-you",
   "displayName": "Pending You",
-  "version": "2.21.0",
+  "version": "2.22.0",
   "description": "One place for everything your AI agents are waiting on you for. When a decision is yours, Claude asks in the conversation and on a Pending You card at once, and the first answer wins.",
   "author": {
     "name": "RecordPlane",
