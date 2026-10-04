@@ -16,4 +16,4 @@ Install the plugin, connect its Pending You connector, then say “set up Pendin
 
 Claude sends Pending You the questions it asks you (a title, a short summary, options and any drafts it attaches) and reads back your answers, through https://www.pendingyou.com. Never passwords, keys or card numbers. Pending You never answers for you. The only model it uses reads a Later time you typed when its own reader can’t, and you see the time before it’s set.
 
-Generated from Pending You’s guide 2.22.0.
+Generated from Pending You’s guide 2.23.0.
