@@ -1,7 +1,7 @@
 // Generated from packages/claude-plugin/src/wake/register.ts in recordplane/pendingyou: edit that, then run
 // `pnpm --filter @pendingyou/claude-plugin generate`.
 
-import { argumentsOf, blockedNote, CLAIM_PREFIX, CLI_COPY, cardTool, checked, claimLease, connectionOf, dueCards, emptyBook, failed, folderOf, HANDED_FAST_MS, HANDED_READS, handedDue, handedNext, handedOf, handedText, handedView, holdOf, holdReply, isRefusal, isStale, isWaitingOnYou, KEEP_MS, learn, leaseHolder, momentOf, prompted, put, readBook, readClaim, readSetup, resultObject, SETUP_AFTER_MS, SETUP_RETRY_MS, SETUP_SERVER, SETUP_TRIES, settle, setUpOf, setupNeeded, setupPrompt, stateOf, statusText, TICK_MS, takesHanded, told, toTell, untold, wakeText, } from "./wake.js";
+import { argumentsOf, blockedNote, CLAIM_PREFIX, CLI_COPY, cardTool, checked, claimLease, cliConfigOf, connectionOf, dueCards, emptyBook, failed, folderOf, HANDED_FAST_MS, HANDED_READS, handedDue, handedNext, handedOf, handedText, handedView, holdOf, holdReply, isRefusal, isStale, isWaitingOnYou, KEEP_MS, learn, leaseHolder, momentOf, originOf, PRESENCE_EVERY_MS, PRESENCE_RUN_MS, presenceArgv, prompted, put, readBook, readClaim, readSetup, readSince, resultObject, SETUP_AFTER_MS, SETUP_RETRY_MS, SETUP_SERVER, SETUP_TRIES, settle, setUpOf, setupNeeded, setupPrompt, stateOf, statusText, TICK_MS, takesHanded, told, toTell, untold, wakeText, } from "./wake.js";
 const RETRY_MS = 60_000;
 const live = {
     me: '',
@@ -24,6 +24,8 @@ const live = {
     handedTold: new Map(),
     folders: [],
     home: undefined,
+    presence: null,
+    presenceTimer: null,
 };
 const keyOf = (sessionId) => `session:${sessionId}`;
 function blockedServer() {
@@ -138,7 +140,7 @@ async function deliverHanded($) {
     const claims = [];
     for (const handed of listed) {
         const known = live.handedTold.get(handed.requestId);
-        if (known === '*' || known === handed.updatedAt)
+        if (readSince(known, handed.updatedAt) || known === handed.updatedAt)
             continue;
         if (!takesHanded(handed, live.folders, live.home, now))
             continue;
@@ -283,6 +285,40 @@ async function folderOfSession($, cwd) {
         live.home = undefined;
     }
 }
+async function sayLive($) {
+    try {
+        const presence = live.presence;
+        if (!presence || !live.sessionId)
+            return;
+        const argv = presenceArgv(presence.config, presence.origin, {
+            id: live.sessionId,
+            ...(live.folders[0] ? { cwd: live.folders[0] } : {}),
+            ...(live.book.name ? { name: live.book.name } : {}),
+            at: await $.clock.now(),
+        });
+        $.process.run(argv, { timeoutMs: PRESENCE_RUN_MS }).catch(() => { });
+    }
+    catch { }
+}
+async function startPresence($) {
+    live.presenceTimer?.cancel();
+    live.presenceTimer = null;
+    live.presence = null;
+    const config = cliConfigOf($.plugin.root);
+    if (!config)
+        return;
+    let manifest = null;
+    try {
+        manifest = await $.fs.read(`${config}/claude-code.json`);
+    }
+    catch { }
+    const origin = originOf(manifest);
+    if (!origin)
+        return;
+    live.presence = { config, origin };
+    await sayLive($);
+    live.presenceTimer = $.clock.every(PRESENCE_EVERY_MS, () => sayLive($));
+}
 async function start($, e) {
     live.me = $.plugin.name;
     live.sessionId = await $.session.id();
@@ -293,6 +329,7 @@ async function start($, e) {
     live.timer?.cancel();
     live.timer = $.clock.every(TICK_MS, () => tick($));
     soon($);
+    await startPresence($).catch(() => { });
     if ($.plugin.name === CLI_COPY && e.isInteractive !== false)
         $.clock.after(SETUP_AFTER_MS, () => checkSetup($, 1));
 }
@@ -310,6 +347,7 @@ async function switchSession($, e) {
     if (carried)
         await save($);
     showCards($);
+    await sayLive($);
 }
 async function observe($, e, result) {
     const found = cardTool(e.tool);
@@ -325,7 +363,7 @@ async function observe($, e, result) {
     }
     const read = e.requestId ?? output?.requestId;
     if (HANDED_READS.has(found.tool) && typeof read === 'string')
-        live.handedTold.set(read, '*');
+        live.handedTold.set(read, `*${now}`);
     const folder = output ? folderOf(found.tool, argumentsOf(e)) : undefined;
     if (folder && !live.folders.includes(folder))
         live.folders = [...live.folders, folder].slice(-5);

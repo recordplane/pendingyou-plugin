@@ -521,8 +521,28 @@ export const HANDED_FOR_MS = 12 * 60 * 60_000;
 export const HANDED_GRACE_MS = 5 * 60_000;
 export const CLAIM_PREFIX = 'handed:';
 export const HANDED_PREFIX = 'Pending You: your person handed you';
+export const HANDED_REPLY = 'on the question handed to you';
+export const HANDED_TALK_TODO = 'If you know now, answer_delegated with your answer and how you know; if you need more, reply_in_thread to “asker”; if it’s your person’s to decide, reply_in_thread with escalate true; if not, hand_back with what you checked.';
+const SAID_CHARS = 300;
 export const HANDED_TODO = 'If you know, answer_delegated with your answer and how you know; if not, hand_back with what you checked.';
 const NAME_CHARS = 60;
+export function latestSaid(talk, from) {
+    if (!Array.isArray(talk))
+        return null;
+    const said = talk.filter(isObject);
+    const mine = said.findLastIndex((each) => each.from === 'helper');
+    const last = said.slice(mine + 1).at(-1);
+    const words = last ? text(last.body, 4000) : undefined;
+    if (!last || !words || (last.from !== 'asker' && last.from !== 'you'))
+        return null;
+    return { who: last.from === 'you' ? 'your person' : from, words };
+}
+export function readSince(known, updatedAt) {
+    if (!known?.startsWith('*'))
+        return false;
+    const at = Number(known.slice(1));
+    return !Number.isFinite(at) || at === 0 || Date.parse(updatedAt) <= at;
+}
 export const handedDue = (seenAt, nextAt, now) => seenAt > 0 && now - seenAt < HANDED_FOR_MS && now >= nextAt;
 export const handedNext = (seenAt, now) => now + (now - seenAt < RECENT_MS ? HANDED_FAST_MS : HANDED_SLOW_MS);
 export function handedOf(output) {
@@ -582,6 +602,7 @@ export function handedView(output, handed, name) {
     const mode = delegated.mode === 'freely' || delegated.mode === 'loop' ? delegated.mode : null;
     if (!from || !mode)
         return null;
+    const said = latestSaid(delegated.talk, from);
     return {
         requestId: handed.requestId,
         title: text(delegated.title, 400) ?? handed.title,
@@ -589,6 +610,7 @@ export function handedView(output, handed, name) {
         mode,
         note: typeof delegated.note === 'string' && delegated.note.trim() !== '',
         name,
+        ...(said ? { said } : {}),
     };
 }
 export function readClaim(value) {
@@ -612,14 +634,25 @@ function asked(card) {
 }
 const readIt = (card) => `get_request (requestId ${card.requestId}, name “${card.name}”) to read it${card.note ? ' and their note' : ''}`;
 export function handedText(cards) {
+    const quotedSaid = (card) => card.said
+        ? `: “${cut(card.said.words, SAID_CHARS).replaceAll('“', '‘').replaceAll('”', '’')}”`
+        : '';
+    const replied = (said) => said.who === 'your person'
+        ? 'your person wrote to you both'
+        : `${cut(said.who, NAME_CHARS)} replied`;
+    const readTalk = (card) => `get_request (requestId ${card.requestId}, name “${card.name}”) to read what you’ve said to each other`;
     if (cards.length === 1) {
         const card = cards[0];
+        if (card.said)
+            return `Pending You: ${replied(card.said)} ${HANDED_REPLY}, ${handedTitled(card)}${quotedSaid(card)}. Call ${readTalk(card)}. ${HANDED_TALK_TODO}`;
         return `${HANDED_PREFIX} ${handedTitled(card)}, a question ${asked(card)}. Call ${readIt(card)}. ${HANDED_TODO}`;
     }
     return [
         `${HANDED_PREFIX} ${cards.length} questions from other assistants.`,
-        ...cards.map((card) => `- ${handedTitled(card)}, ${asked(card)}: call ${readIt(card)}.`),
-        `For each one: ${HANDED_TODO.charAt(0).toLowerCase()}${HANDED_TODO.slice(1)}`,
+        ...cards.map((card) => card.said
+            ? `- ${handedTitled(card)}, ${asked(card)}; ${replied(card.said)}${quotedSaid(card)}: call ${readTalk(card)}.`
+            : `- ${handedTitled(card)}, ${asked(card)}: call ${readIt(card)}.`),
+        `For each one: ${HANDED_TODO.charAt(0).toLowerCase()}${HANDED_TODO.slice(1)}${cards.some((card) => card.said) ? ' Where one replied, you may also reply_in_thread to “asker”, or escalate.' : ''}`,
     ].join('\n');
 }
 export const CLI_COPY = 'pendingyou-wake';
@@ -664,4 +697,40 @@ export function connectionOf(output) {
 }
 export function setupPrompt(connection = 'Claude Code') {
     return `Pending You: ${connection} is connected, but its setup isn’t finished. Three calls, nothing to install or approve: 1. whoami with your name. If it says app.setUp is true, another session did this: stop. 2. report_setup with source claude-code, your name, skillSaved true, hears instant, and skillVersion set to whoami’s skill.latest. Its answer has a testAreaId. 3. post_request a short test question in that testAreaId, tell your person it’s on its way, and end your turn: you’re woken when they answer, so don’t ask them to type anything.`;
+}
+export const PRESENCE_EVERY_MS = 5 * 60_000;
+export const PRESENCE_RUN_MS = 15_000;
+const PRODUCTION = 'https://www.pendingyou.com';
+export function cliConfigOf(root) {
+    return (/^(.+)[\\/]cli[\\/][^\\/]+[\\/]node_modules[\\/]pendingyou[\\/]mod[\\/]?$/.exec(root)?.[1] ??
+        null);
+}
+export function originOf(manifest) {
+    let parsed = manifest;
+    if (typeof manifest === 'string')
+        try {
+            parsed = JSON.parse(manifest);
+        }
+        catch {
+            return null;
+        }
+    const origin = typeof parsed === 'object' && parsed !== null ? parsed.origin : null;
+    return typeof origin === 'string' && /^https?:\/\/[^\s/]+$/.test(origin) ? origin : null;
+}
+export function presenceArgv(config, origin, session) {
+    return [
+        `${config}/bin/pendingyou-hook`,
+        'presence',
+        '--app',
+        'claude-code',
+        '--state',
+        'live',
+        '--session',
+        session.id,
+        ...(session.cwd ? ['--cwd', session.cwd] : []),
+        ...(session.name ? ['--name', session.name] : []),
+        '--at',
+        String(Math.floor(session.at)),
+        ...(origin === PRODUCTION ? [] : ['--origin', origin]),
+    ];
 }
