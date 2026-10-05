@@ -346,6 +346,11 @@ function line(card) {
                 `your person answered ${titled(card)}`,
                 `call ${get}, act on their words, then ack_answer with its version and a one-line outcome`,
             ];
+        case 'delegated':
+            return [
+                `there’s word on ${titled(card)}, which your person handed to another assistant`,
+                `call ${get} and do what its helper.next says`,
+            ];
         default:
             return [
                 `your person wrote to you on ${titled(card)}`,
@@ -355,7 +360,9 @@ function line(card) {
 }
 const capital = (sentence) => sentence.charAt(0).toUpperCase() + sentence.slice(1);
 export function wakeText(cards) {
-    const asked = cards.some((card) => card.state?.turn === 'agent' && !isClosed(card.state.status));
+    const asked = cards.some((card) => card.state?.turn === 'agent' &&
+        !isClosed(card.state.status) &&
+        card.state.status !== 'delegated');
     const reopen = asked
         ? ' If they asked you something or you need more from them, reply_in_thread with reopen instead.'
         : '';
