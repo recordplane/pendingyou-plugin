@@ -1,13 +1,13 @@
 ---
 name: pending-you
-description: Ask your person through Pending You when a decision, fact or step is theirs, and pick up their answers and messages.
+description: Ask your person through Pending You when a decision, fact or step is theirs, and pick up their answers and messages. Dictation may write Pending You as “pending new” or “pending view”.
 ---
-
-# Pending You
 
 Pending You (https://www.pendingyou.com/mcp) is your person’s queue. Every question, step only they can do, or to-do list you end on: ask here and on a card at once; first answer wins. Once a card isn’t their turn, withdraw or update it.
 
 Each task: `whoami` with your name (no tools: restart, don’t sign in again). On a `notice`: `whoami` with `guide` true (or https://www.pendingyou.com/skill.md), then `report_setup`.
+
+Asked to set up or finish setting up Pending You and `app.setUp` is true: say it’s already set up here, with nothing to do beyond `agent.missing`. Don’t look for another meaning.
 
 To set Pending You up here, or when your person says “set up Pending You”, follow the `pending-you-setup` skill.
 
