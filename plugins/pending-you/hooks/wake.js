@@ -1,48 +1,21 @@
 // Generated from packages/claude-plugin/src/wake/wake.ts in recordplane/pendingyou: edit that, then run
 // `pnpm --filter @pendingyou/claude-plugin generate`.
 
-// The Pending You wake mod's rules, as plain functions with no Claude Code in them, so every rule has a test
-// (test/wake.test.ts). register.ts calls Claude Code and keeps its state; src/plugin.ts ships both as JavaScript in the
-// plugin's hooks/ and in the pendingyou command line's mod/.
-//
-// In one Claude Code session (2.1.287 and later) the mod:
-// - learns the session's own cards from its Pending You tool calls: post_request's requestId, update_request,
-//   reply_in_thread with reopen (or any reply that leaves the card the person's turn), and get_request of a card still
-//   waiting on them; it forgets a card after its ack_answer or cancel_request, or once it's closed;
-// - answers `npx pendingyou hold <id>` itself, so nothing runs in the background and nothing has to be restarted;
-// - checks each card with get_request over the session's own connection, every 20 seconds while it changed in the
-//   last 30 minutes, then every minute, backing off on errors;
-// - starts one turn when it's the agent's move (an answer, a message, a fallback that ran, a card closed under it),
-//   once per change, several cards in one prompt;
-// - shows "N waiting on you" under the prompt (Claude Code puts the plugin's name in front: "⚠ pending-you: 1 waiting
-//   on you");
-// - in the command line's copy only (`npx pendingyou init`, 0.11.0), starts the turn that finishes setting Pending You
-//   up, once, when a session opens on a computer init connected and Pending You says Claude Code isn't set up yet.
-/** How often register.ts looks at what's due. */
 export const TICK_MS = 5000;
-/** Each card is checked every 20 seconds while it changed in the last 30 minutes, then every minute. */
 export const FAST_MS = 20_000;
 export const SLOW_MS = 60_000;
 export const RECENT_MS = 30 * 60_000;
-/** A check that failed is tried again after 20 seconds, doubling each time, up to 15 minutes. */
 export const MAX_BACKOFF_MS = 15 * 60_000;
-/** The soonest it looks again on Pending You's hint (pollAfterSeconds). */
 export const HINT_FLOOR_MS = 5000;
-/** While Claude Code won't let the mod check (the tool isn't allowed), it tries again every minute. */
 export const BLOCKED_MS = 60_000;
-/** A card, or a session's whole list, untouched for 7 days is forgotten. */
 export const KEEP_MS = 7 * 24 * 60 * 60_000;
-/** The most cards one session keeps; the oldest go first. */
 export const MAX_CARDS = 50;
-/** The lease that keeps one copy of the mod acting in a session's process, and how often its holder renews it. */
 export const LEASE_MS = 60_000;
 export const RENEW_MS = 20_000;
-/** The most of a card's title a prompt or the status line repeats. */
 export const TITLE_CHARS = 80;
 const REQUEST_ID = /^req_[A-Za-z0-9-]{1,40}$/;
 const OPEN = new Set(['pending', 'snoozed', 'delegated']);
 const CLOSED = new Set(['resolved', 'cancelled', 'expired']);
-/** The tools the mod reads: the card tools, and two more that say which name and server the session uses. */
 const READS = new Set([
     'post_request',
     'get_request',
@@ -65,7 +38,6 @@ const parseJson = (text) => {
 const text = (value, max = 200) => typeof value === 'string' && value.trim() && value.length <= max ? value.trim() : undefined;
 const count = (value) => typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 const requestIdOf = (value) => typeof value === 'string' && REQUEST_ID.test(value) ? value : undefined;
-/** A title cut to TITLE_CHARS on one line, with its double quotes made single. */
 export function clip(title) {
     const flat = title.replace(/\s+/g, ' ').trim().replaceAll('“', '‘').replaceAll('”', '’');
     const chars = [...flat];
@@ -76,12 +48,10 @@ export function clip(title) {
             .join('')
             .trimEnd()}…`;
 }
-/** Whether an MCP server is a Pending You, whatever it's called (`pendingyou`, the plugin's, a claude.ai connector). */
 export const isPendingYou = (server) => server
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
     .includes('pendingyou');
-/** `mcp__<server>__<tool>` for a Pending You tool the mod reads; null for any other tool. */
 export function cardTool(name) {
     const match = /^mcp__(.+)__([a-z_]+)$/.exec(name);
     if (!match)
@@ -89,10 +59,6 @@ export function cardTool(name) {
     const [, server = '', tool = ''] = match;
     return READS.has(tool) && isPendingYou(server) ? { server, tool } : null;
 }
-/**
- * The JSON object a Pending You tool answered with: a `tool.call` result's `text` (or a string `result`), or an MCP
- * result's `structuredContent` or text blocks. Null for a refusal, an error, or words that aren't JSON.
- */
 export function resultObject(result) {
     if (!isObject(result) || result.deny !== undefined || result.isError === true)
         return null;
@@ -124,7 +90,6 @@ export function resultObject(result) {
     }
     return null;
 }
-/** The agent's name on a call: `name`, or post_request's `session.label` (an object, or the same as JSON text). */
 export function nameOf(tool, input) {
     const name = text(input.name, 120);
     if (name || tool !== 'post_request')
@@ -132,18 +97,14 @@ export function nameOf(tool, input) {
     const session = typeof input.session === 'string' ? parseJson(input.session) : input.session;
     return isObject(session) ? text(session.label, 120) : undefined;
 }
-/** A tool call's own arguments: the call without the keys Claude Code adds beside them. */
 export function argumentsOf(call) {
     const { tool: _tool, tool_use_id: _id, agentId: _agent, consent: _consent, ...rest } = call;
     return rest;
 }
 export const isClosed = (status) => CLOSED.has(status);
-/** The agent's move: their answer or a message is waiting, a fallback ran, or the card closed. */
 export const isReady = (state) => state.turn === 'agent' || isClosed(state.status);
 export const isWaitingOnYou = (state) => state.turn === 'you' && OPEN.has(state.status);
-/** One moment of a card: a new answer, message, status or version is a new moment. */
 export const momentOf = (state) => `${state.status}/${state.turn}/${state.version}/${state.cursor}`;
-/** A card's state from get_request's answer; null when it isn't one. */
 export function stateOf(output) {
     const status = text(output.status, 40);
     const turn = output.turn === 'you' || output.turn === 'agent' ? output.turn : undefined;
@@ -153,7 +114,6 @@ export function stateOf(output) {
     return { status, turn, version, cursor: typeof output.cursor === 'string' ? output.cursor : '' };
 }
 export const emptyBook = (now = 0) => ({ v: 1, updatedAt: now, cards: {} });
-/** A session's list as the store holds it, keeping only what reads as a card; empty for anything else. */
 export function readBook(value) {
     if (!isObject(value) || value.v !== 1 || !isObject(value.cards))
         return emptyBook();
@@ -192,7 +152,6 @@ export function readBook(value) {
         cards,
     };
 }
-/** The book with this card in it, keeping MAX_CARDS (the least recently changed go). */
 export function put(book, card) {
     const cards = { ...book.cards, [card.requestId]: card };
     const all = Object.values(cards);
@@ -209,7 +168,6 @@ export function drop(book, requestId) {
     const { [requestId]: _gone, ...cards } = book.cards;
     return { ...book, cards };
 }
-/** A card the session has just put in front of the person (posted, changed, reopened): checked soon. */
 function tracked(book, facts, now) {
     const card = book.cards[facts.requestId];
     const name = facts.name ?? card?.name;
@@ -225,7 +183,6 @@ function tracked(book, facts, now) {
         nextAt: now + FAST_MS,
     });
 }
-/** What the mod learns from one of the session's Pending You calls. Returns the same book when nothing changed. */
 export function learn(book, call, now) {
     const { server, tool, input, output } = call;
     if (!output)
@@ -277,7 +234,6 @@ export function learn(book, call, now) {
                 return isWaitingOnYou(state)
                     ? tracked(next, { requestId, server, ...(name ? { name } : {}), state }, now)
                     : next;
-            // The agent looked for itself: what it saw needs no turn of its own.
             const moment = momentOf(state);
             const changed = !card.state || momentOf(card.state) !== moment;
             return put(next, {
@@ -295,7 +251,6 @@ export function learn(book, call, now) {
             return next;
     }
 }
-/** The card after a check that answered: its new state, and when to look again. */
 export function checked(card, output, now) {
     const state = stateOf(output) ?? card.state;
     if (!state)
@@ -303,15 +258,12 @@ export function checked(card, output, now) {
     const changed = !card.state || momentOf(card.state) !== momentOf(state);
     const changedAt = changed ? now : card.changedAt;
     let wait = now - changedAt < RECENT_MS ? FAST_MS : SLOW_MS;
-    // Pending You's own hint, when it's sooner: an answer inside its 5-second hold (it reads as pending until then), or a
-    // fallback about to run. Never sooner than 5 seconds: a fallback that's due but hasn't run reads as 1.
     const pollAfter = count(output.pollAfterSeconds);
     if (!isReady(state) && pollAfter !== undefined && pollAfter * 1000 < wait)
         wait = Math.max(HINT_FLOOR_MS, pollAfter * 1000 + 1000);
     const { failures: _failures, ...rest } = card;
     return { ...rest, state, changedAt, nextAt: now + wait };
 }
-/** The card after a check that failed: tried again later, backing off; `blocked` when Claude Code refused it. */
 export function failed(card, now, blocked) {
     if (blocked)
         return { ...card, nextAt: now + BLOCKED_MS };
@@ -322,13 +274,11 @@ export function failed(card, now, blocked) {
         nextAt: now + Math.min(MAX_BACKOFF_MS, FAST_MS * 2 ** (failures - 1)),
     };
 }
-/** The cards due a check now, the most overdue first. */
 export function dueCards(book, now) {
     return Object.values(book.cards)
         .filter((card) => !(card.state && isClosed(card.state.status)) && (card.nextAt ?? 0) <= now)
         .sort((a, b) => (a.nextAt ?? 0) - (b.nextAt ?? 0));
 }
-/** Whether the agent has yet to hear the card's moment: its move, and neither told by the mod nor seen itself. */
 export function needsTelling(card) {
     const state = card.state;
     if (!state || !isReady(state))
@@ -336,16 +286,13 @@ export function needsTelling(card) {
     const moment = momentOf(state);
     if (moment === card.told || moment === card.seen)
         return false;
-    // Handled or withdrawn after the agent already heard of it (its own ack or cancel, made elsewhere): nothing new.
     if ((state.status === 'resolved' || state.status === 'cancelled') && (card.told || card.seen))
         return false;
     return true;
 }
-/** The cards to start a turn for, in the order they changed. */
 export const toTell = (book) => Object.values(book.cards)
     .filter(needsTelling)
     .sort((a, b) => a.changedAt - b.changedAt);
-/** The book once these cards' moments are told. */
 export function told(book, cards) {
     let next = book;
     for (const card of cards) {
@@ -355,10 +302,6 @@ export function told(book, cards) {
     }
     return next;
 }
-/**
- * The book with these cards' moments not told after all (the prompt didn't go), from the cards as they were before
- * `told`: a later tick tries again. A card that moved on since keeps what it has.
- */
 export function untold(book, before) {
     let next = book;
     for (const card of before) {
@@ -370,10 +313,6 @@ export function untold(book, before) {
     }
     return next;
 }
-/**
- * The book without what's done: closed cards the agent has heard about (or needn't), and anything untouched for
- * KEEP_MS. Returns the same book when nothing goes.
- */
 export function settle(book, now) {
     let next = book;
     for (const card of Object.values(book.cards)) {
@@ -383,11 +322,9 @@ export function settle(book, now) {
     }
     return next;
 }
-/** Whether a session's list in the store is old enough to forget. */
 export const isStale = (book, now) => now - book.updatedAt > KEEP_MS;
 const titled = (card) => card.title ? `“${clip(card.title)}” (${card.requestId})` : card.requestId;
 const named = (card) => (card.name ? `name “${card.name}”` : 'your name');
-/** What happened to a card and what to do, for the prompt: [what happened, what to do]. */
 function line(card) {
     const state = card.state;
     const get = `get_request (requestId ${card.requestId}, ${named(card)})`;
@@ -414,7 +351,6 @@ function line(card) {
     }
 }
 const capital = (sentence) => sentence.charAt(0).toUpperCase() + sentence.slice(1);
-/** The prompt that wakes the session: short, every card in it, and what to do with each. */
 export function wakeText(cards) {
     const asked = cards.some((card) => card.state?.turn === 'agent' && !isClosed(card.state.status));
     const reopen = asked
@@ -433,24 +369,14 @@ export function wakeText(cards) {
         ...(reopen ? [reopen.trim()] : []),
     ].join('\n');
 }
-/**
- * The line under the prompt: the cards waiting on the person, or how to let the mod check; none when there's neither.
- * Claude Code draws it after the plugin's name ("⚠ pending-you: 1 waiting on you"), so it doesn't say Pending You again.
- */
 export function statusText(book, blocked) {
     if (blocked)
         return `to hear answers here, allow mcp__${blocked} in /permissions`;
     const waiting = Object.values(book.cards).filter((card) => card.state && isWaitingOnYou(card.state)).length;
     return waiting ? `${waiting} waiting on you` : undefined;
 }
-/** What the agent reads, once, when Claude Code won't let the mod check its cards. */
 export const blockedNote = (server) => `Pending You can’t wake this session when your person answers: Claude Code doesn’t let it check your cards yet. Ask them to allow mcp__${server} in /permissions (Allow, user settings). Until then, check get_request at breakpoints.`;
-/** Whether a refused `$.mcp.call` was Claude Code's permission check, not the server. */
 export const isRefusal = (error) => /refused|permission|not allowed|haven.t granted/i.test(error instanceof Error ? error.message : String(error));
-/**
- * A command line split into words the way a shell splits one simple command (quotes and backslashes, no expansion).
- * Null when it's more than one simple command: a pipe, `&&`, `;`, `&`, a redirect, `$…`, a backtick or a newline.
- */
 export function shellWords(command) {
     const words = [];
     let word = '';
@@ -512,12 +438,6 @@ const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 const PACKAGE = /^pendingyou(@[\w.^~=<>*-]+)?$/;
 const NPX_FLAGS = new Set(['-y', '--yes', '-q', '--quiet', '--prefer-offline', '--prefer-online']);
 const OPTION = /^--(origin|timeout)=\S+$/;
-/**
- * The request a Bash command holds for: `npx pendingyou hold <id>` in the forms agents and the guide write it
- * (`PENDINGYOU_ORIGIN=… npx -y pendingyou@latest hold <id> --origin … --timeout 4h`), `pendingyou hold <id>`, or the
- * command line's own `"<node>" "…/pendingyou/dist/cli.js" hold <id>`. Null for anything else, a compound command
- * included: that runs as it is.
- */
 export function holdOf(command) {
     const words = shellWords(command.trim());
     if (!words?.length)
@@ -575,22 +495,15 @@ export function holdOf(command) {
     }
     return held ? requestId : null;
 }
-/** What a hold the mod answered prints: there's nothing to wait on. */
 export const holdReply = (requestId) => `Pending You: no hold is needed in this session. It’s woken when your person answers ${requestId}, writes to you on it, or its fallback runs, even while it’s idle. Nothing is running in the background and there’s nothing to wait on: keep working, or end your turn.`;
-/** The lease's holder and how long it holds, from the environment variable's value. */
 function leaseOf(value) {
     const match = /^(\S+) (\d+)$/.exec(value ?? '');
     return match ? { holder: match[1], until: Number(match[2]) } : null;
 }
-/** Who holds the lease now; null when nobody does. */
 export function leaseHolder(value, now) {
     const lease = leaseOf(value);
     return lease && lease.until > now ? lease.holder : null;
 }
-/**
- * What to write to take or renew the lease: null when another copy holds it, or this one's needn't be renewed yet.
- * Each copy is named for its plugin: two plugins of one name never load together in one session.
- */
 export function claimLease(value, me, now) {
     const lease = leaseOf(value);
     if (lease && lease.until > now && lease.holder !== me)
@@ -599,18 +512,13 @@ export function claimLease(value, me, now) {
         return null;
     return `${me} ${now + LEASE_MS}`;
 }
-/** The command line's copy of the mod (`npx pendingyou init`): the only one that starts setup. The plugin has a skill. */
 export const CLI_COPY = 'pendingyou-wake';
-/** The server init adds Pending You as, whose whoami says whether Claude Code is set up here. */
 export const SETUP_SERVER = 'pendingyou';
-/** How long after a session opens it asks, how long between tries while the server connects, and how many tries. */
 export const SETUP_AFTER_MS = 3000;
 export const SETUP_RETRY_MS = 10_000;
 export const SETUP_TRIES = 3;
-/** The most sessions it starts setup in, and how long after one before another may (two opened together, say). */
 export const SETUP_SESSIONS = 3;
 export const SETUP_QUIET_MS = 10 * 60_000;
-/** The record as the store holds it; a fresh one for anything else. */
 export function readSetup(value) {
     if (!isObject(value))
         return { done: false, sessions: [], lastAt: 0 };
@@ -622,31 +530,21 @@ export function readSetup(value) {
         lastAt: count(value.lastAt) ?? 0,
     };
 }
-/** What whoami's answer says: Claude Code is set up here (true), isn't (false), or nothing to go on (null). */
 export function setUpOf(output) {
     const app = output && isObject(output.app) ? output.app : null;
     return typeof app?.setUp === 'boolean' ? app.setUp : null;
 }
-/**
- * Whether this session should start setup now: not done, not started in it already, in fewer than SETUP_SESSIONS
- * sessions so far, and none started in the last SETUP_QUIET_MS (another session may be doing it).
- */
 export function setupNeeded(record, sessionId, now) {
     return (!record.done &&
         !record.sessions.includes(sessionId) &&
         record.sessions.length < SETUP_SESSIONS &&
         now - record.lastAt >= SETUP_QUIET_MS);
 }
-/** The record once this session has started setup. */
 export const prompted = (record, sessionId, now) => ({
     ...record,
     sessions: [...record.sessions, sessionId].slice(-SETUP_SESSIONS),
     lastAt: now,
 });
-/**
- * The connection whoami names ("Claude Code on Darin’s MacBook Pro"): its app's name, and the machine it signed in
- * from; "Claude Code" when whoami's answer doesn't say.
- */
 export function connectionOf(output) {
     const app = output && isObject(output.app) ? output.app : null;
     const agent = output && isObject(output.agent) ? output.agent : null;
@@ -654,12 +552,6 @@ export function connectionOf(output) {
     const machine = typeof agent?.machine === 'string' ? agent.machine.trim() : '';
     return machine ? `${name} on ${machine}` : name;
 }
-/**
- * The turn that finishes setting up (CLI 0.13.0), as the session reads it: exactly the three calls, as the command
- * line's session-start line says them (its setupLine; a test holds them equal), so it needs nothing else. Before, it
- * asked for whoami with guide true, whose answer is the whole guide (87,000 characters), and for testAreaId, which
- * only report_setup's answer has: Pi spent about 20,000 tokens on that line on Darin's devbox.
- */
 export function setupPrompt(connection = 'Claude Code') {
     return `Pending You: ${connection} is connected, but its setup isn’t finished. Three calls, nothing to install or approve: 1. whoami with your name. If it says app.setUp is true, another session did this: stop. 2. report_setup with source claude-code, your name, skillSaved true, hears instant, and skillVersion set to whoami’s skill.latest. Its answer has a testAreaId. 3. post_request a short test question in that testAreaId, tell your person it’s on its way, and end your turn: you’re woken when they answer, so don’t ask them to type anything.`;
 }
