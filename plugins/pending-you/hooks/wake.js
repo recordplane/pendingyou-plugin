@@ -25,7 +25,10 @@ const READS = new Set([
     'cancel_request',
     'whoami',
     'list_pending',
+    'answer_delegated',
+    'hand_back',
 ]);
+export const HANDED_READS = new Set(['get_request', 'answer_delegated', 'hand_back']);
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 const parseJson = (text) => {
     try {
@@ -511,6 +514,113 @@ export function claimLease(value, me, now) {
     if (lease && lease.holder === me && lease.until - now > LEASE_MS - RENEW_MS)
         return null;
     return `${me} ${now + LEASE_MS}`;
+}
+export const HANDED_FAST_MS = 60_000;
+export const HANDED_SLOW_MS = 3 * 60_000;
+export const HANDED_FOR_MS = 12 * 60 * 60_000;
+export const HANDED_GRACE_MS = 5 * 60_000;
+export const CLAIM_PREFIX = 'handed:';
+export const HANDED_PREFIX = 'Pending You: your person handed you';
+export const HANDED_TODO = 'If you know, answer_delegated with your answer and how you know; if not, hand_back with what you checked.';
+const NAME_CHARS = 60;
+export const handedDue = (seenAt, nextAt, now) => seenAt > 0 && now - seenAt < HANDED_FOR_MS && now >= nextAt;
+export const handedNext = (seenAt, now) => now + (now - seenAt < RECENT_MS ? HANDED_FAST_MS : HANDED_SLOW_MS);
+export function handedOf(output) {
+    const requests = output && Array.isArray(output.requests) ? output.requests : [];
+    return requests.flatMap((request) => {
+        if (!isObject(request) || request.delegated !== true)
+            return [];
+        if (request.status !== 'delegated' || request.turn !== 'agent')
+            return [];
+        const requestId = requestIdOf(request.id);
+        const title = text(request.title, 400);
+        const updatedAt = text(request.updatedAt, 40);
+        const cwd = text(request.cwd, 1000);
+        return requestId && title && updatedAt
+            ? [{ requestId, title, updatedAt, ...(cwd ? { cwd } : {}) }]
+            : [];
+    });
+}
+export function folderKey(path, home) {
+    const given = path
+        .trim()
+        .replaceAll('\\', '/')
+        .replace(/\/{2,}/g, '/');
+    const base = home?.replace(/\/+$/, '');
+    const full = base && given === '~'
+        ? base
+        : base && given.startsWith('~/')
+            ? `${base}${given.slice(1)}`
+            : given;
+    return (full.replace(/\/+$/, '') || '/').toLowerCase();
+}
+export function inTaskFolder(folders, task, home) {
+    const there = folderKey(task, home);
+    return folders.some((folder) => {
+        const here = folderKey(folder, home);
+        return here === there || here.startsWith(there === '/' ? '/' : `${there}/`);
+    });
+}
+export function takesHanded(handed, folders, home, now) {
+    if (!handed.cwd)
+        return true;
+    if (folders.length === 0)
+        return now - Date.parse(handed.updatedAt) >= HANDED_GRACE_MS;
+    return inTaskFolder(folders, handed.cwd, home);
+}
+export function folderOf(tool, input) {
+    if (tool !== 'post_request')
+        return undefined;
+    const session = typeof input.session === 'string' ? parseJson(input.session) : input.session;
+    return isObject(session) ? text(session.cwd, 1000) : undefined;
+}
+export function handedView(output, handed, name) {
+    const delegated = output && isObject(output.delegated) ? output.delegated : null;
+    if (!delegated || output?.status !== 'delegated' || output.turn !== 'agent')
+        return null;
+    const from = text(delegated.from, 200);
+    const mode = delegated.mode === 'freely' || delegated.mode === 'loop' ? delegated.mode : null;
+    if (!from || !mode)
+        return null;
+    return {
+        requestId: handed.requestId,
+        title: text(delegated.title, 400) ?? handed.title,
+        from,
+        mode,
+        note: typeof delegated.note === 'string' && delegated.note.trim() !== '',
+        name,
+    };
+}
+export function readClaim(value) {
+    if (!isObject(value) || typeof value.moment !== 'string')
+        return null;
+    return { moment: value.moment, at: count(value.at) ?? 0 };
+}
+function cut(value, max) {
+    const chars = [...value.replace(/\s+/g, ' ').trim()];
+    return chars.length <= max
+        ? chars.join('')
+        : `${chars
+            .slice(0, max - 1)
+            .join('')
+            .trimEnd()}…`;
+}
+const handedTitled = (card) => `“${clip(card.title)}” (${card.requestId})`;
+function asked(card) {
+    const from = cut(card.from, NAME_CHARS);
+    return `from ${from} (${card.mode === 'freely' ? `answer freely: your answer goes straight to ${from}` : 'they’ll see your answer first'})`;
+}
+const readIt = (card) => `get_request (requestId ${card.requestId}, name “${card.name}”) to read it${card.note ? ' and their note' : ''}`;
+export function handedText(cards) {
+    if (cards.length === 1) {
+        const card = cards[0];
+        return `${HANDED_PREFIX} ${handedTitled(card)}, a question ${asked(card)}. Call ${readIt(card)}. ${HANDED_TODO}`;
+    }
+    return [
+        `${HANDED_PREFIX} ${cards.length} questions from other assistants.`,
+        ...cards.map((card) => `- ${handedTitled(card)}, ${asked(card)}: call ${readIt(card)}.`),
+        `For each one: ${HANDED_TODO.charAt(0).toLowerCase()}${HANDED_TODO.slice(1)}`,
+    ].join('\n');
 }
 export const CLI_COPY = 'pendingyou-wake';
 export const SETUP_SERVER = 'pendingyou';
