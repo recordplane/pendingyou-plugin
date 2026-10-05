@@ -1,7 +1,7 @@
 // Generated from packages/claude-plugin/src/wake/register.ts in recordplane/pendingyou: edit that, then run
 // `pnpm --filter @pendingyou/claude-plugin generate`.
 
-import { argumentsOf, blockedNote, CLAIM_PREFIX, CLI_COPY, cardTool, checked, claimLease, cliConfigOf, connectionOf, dueCards, emptyBook, failed, folderOf, HANDED_FAST_MS, HANDED_READS, handedDue, handedNext, handedOf, handedText, handedView, holdOf, holdReply, isRefusal, isStale, isWaitingOnYou, KEEP_MS, learn, leaseHolder, momentOf, originOf, PRESENCE_EVERY_MS, PRESENCE_RUN_MS, presenceArgv, prompted, put, readBook, readClaim, readSetup, readSince, resultObject, SETUP_AFTER_MS, SETUP_RETRY_MS, SETUP_SERVER, SETUP_TRIES, settle, setUpOf, setupNeeded, setupPrompt, stateOf, statusText, TICK_MS, takesHanded, told, toTell, untold, wakeText, } from "./wake.js";
+import { argumentsOf, blockedNote, CLAIM_PREFIX, CLI_COPY, cardTool, checked, claimLease, cliConfigOf, connectionOf, dueCards, emptyBook, failed, folderOf, HANDED_FAST_MS, HANDED_READS, HERDR_EVERY_MS, HERDR_RUN_MS, handedDue, handedNext, handedOf, handedText, handedView, herdrArgv, herdrPayload, holdOf, holdReply, inHerdr, isRefusal, isStale, isWaitingOnYou, KEEP_MS, learn, leaseHolder, momentOf, originOf, PRESENCE_EVERY_MS, PRESENCE_RUN_MS, presenceArgv, prompted, put, readBook, readClaim, readSetup, readSince, resultObject, SETUP_AFTER_MS, SETUP_RETRY_MS, SETUP_SERVER, SETUP_TRIES, settle, setUpOf, setupNeeded, setupPrompt, stateOf, statusText, TICK_MS, takesHanded, told, toTell, untold, wakeText, } from "./wake.js";
 const RETRY_MS = 60_000;
 const live = {
     me: '',
@@ -26,6 +26,9 @@ const live = {
     home: undefined,
     presence: null,
     presenceTimer: null,
+    herdr: null,
+    herdrSaid: undefined,
+    herdrTimer: null,
 };
 const keyOf = (sessionId) => `session:${sessionId}`;
 function blockedServer() {
@@ -60,7 +63,38 @@ function show($, text) {
     }
     catch { }
 }
-const showCards = ($) => show($, live.owner ? statusText(live.book, blockedServer()) : undefined);
+const showCards = ($) => {
+    show($, live.owner ? statusText(live.book, blockedServer()) : undefined);
+    void sayHerdr($);
+};
+async function sayHerdr($, again = false) {
+    try {
+        if (!live.herdr || !live.sessionId || !live.owner)
+            return;
+        const payload = herdrPayload(live.book);
+        if (!again && payload === live.herdrSaid)
+            return;
+        live.herdrSaid = payload;
+        const argv = herdrArgv(live.herdr.config, { id: live.sessionId, at: await $.clock.now() });
+        $.process.run(argv, { stdin: payload, timeoutMs: HERDR_RUN_MS }).catch(() => { });
+    }
+    catch { }
+}
+async function startHerdr($) {
+    live.herdrTimer?.cancel();
+    live.herdrTimer = null;
+    live.herdr = null;
+    live.herdrSaid = undefined;
+    const config = cliConfigOf($.plugin.root);
+    if (!config)
+        return;
+    const herdr = inHerdr(await $.env.get('HERDR_ENV'), await $.env.get('HERDR_BIN_PATH'), await $.env.get('HERDR_PANE_ID'));
+    if (!herdr)
+        return;
+    live.herdr = { config };
+    await sayHerdr($);
+    live.herdrTimer = $.clock.every(HERDR_EVERY_MS, () => sayHerdr($, true));
+}
 async function allowed($, server, args, tool = 'get_request') {
     try {
         const decided = await $.tool.check({ tool: `mcp__${server}__${tool}`, input: args });
@@ -330,6 +364,7 @@ async function start($, e) {
     live.timer = $.clock.every(TICK_MS, () => tick($));
     soon($);
     await startPresence($).catch(() => { });
+    await startHerdr($).catch(() => { });
     if ($.plugin.name === CLI_COPY && e.isInteractive !== false)
         $.clock.after(SETUP_AFTER_MS, () => checkSetup($, 1));
 }
@@ -346,6 +381,7 @@ async function switchSession($, e) {
         await folderOfSession($, e.cwd);
     if (carried)
         await save($);
+    live.herdrSaid = undefined;
     showCards($);
     await sayLive($);
 }

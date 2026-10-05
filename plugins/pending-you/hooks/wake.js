@@ -16,6 +16,8 @@ export const TITLE_CHARS = 80;
 const REQUEST_ID = /^req_[A-Za-z0-9-]{1,40}$/;
 const OPEN = new Set(['pending', 'snoozed', 'delegated']);
 const CLOSED = new Set(['resolved', 'cancelled', 'expired']);
+const URGENCIES = new Set(['now', 'today', 'whenever']);
+const isUrgency = (value) => typeof value === 'string' && URGENCIES.has(value);
 const READS = new Set([
     'post_request',
     'get_request',
@@ -138,6 +140,9 @@ export function readBook(value) {
             changedAt,
             ...(text(card.name, 120) ? { name: text(card.name, 120) } : {}),
             ...(text(card.title, 400) ? { title: text(card.title, 400) } : {}),
+            ...(isUrgency(card.urgency) ? { urgency: card.urgency } : {}),
+            ...(card.blocking === true ? { blocking: true } : {}),
+            ...(card.askedFirst === true ? { askedFirst: true } : {}),
             ...(state ? { state } : {}),
             ...(typeof card.told === 'string' ? { told: card.told } : {}),
             ...(typeof card.seen === 'string' ? { seen: card.seen } : {}),
@@ -171,6 +176,25 @@ export function drop(book, requestId) {
     const { [requestId]: _gone, ...cards } = book.cards;
     return { ...book, cards };
 }
+const pressingOfCard = (card) => ({
+    ...(card?.urgency ? { urgency: card.urgency } : {}),
+    ...(card?.blocking ? { blocking: true } : {}),
+    ...(card?.askedFirst ? { askedFirst: true } : {}),
+});
+function askedFirstIn(input) {
+    const asked = typeof input.askedFirst === 'string' ? parseJson(input.askedFirst) : input.askedFirst;
+    return isObject(asked);
+}
+function pressingFrom(tool, input, card) {
+    const urgency = isUrgency(input.urgency) ? input.urgency : card?.urgency;
+    const blocking = typeof input.blocking === 'boolean' ? input.blocking : card?.blocking === true;
+    const askedFirst = tool === 'post_request' ? askedFirstIn(input) : card?.askedFirst === true;
+    return {
+        ...(urgency ? { urgency } : {}),
+        ...(blocking ? { blocking: true } : {}),
+        ...(askedFirst ? { askedFirst: true } : {}),
+    };
+}
 function tracked(book, facts, now) {
     const card = book.cards[facts.requestId];
     const name = facts.name ?? card?.name;
@@ -180,6 +204,7 @@ function tracked(book, facts, now) {
         server: facts.server,
         ...(name ? { name } : {}),
         ...(title ? { title } : {}),
+        ...(facts.pressing ?? pressingOfCard(card)),
         learnedAt: card?.learnedAt ?? now,
         changedAt: now,
         state: facts.state,
@@ -211,6 +236,7 @@ export function learn(book, call, now) {
                 server,
                 ...(name ? { name } : {}),
                 ...(title ? { title: clip(title) } : {}),
+                pressing: pressingFrom(tool, input, card),
                 state: { status, turn: 'you', version, cursor: card?.state?.cursor ?? '' },
             }, now);
         }
@@ -739,5 +765,39 @@ export function presenceArgv(config, origin, session) {
         '--at',
         String(Math.floor(session.at)),
         ...(origin === PRODUCTION ? [] : ['--origin', origin]),
+    ];
+}
+export const HERDR_EVERY_MS = 5 * 60_000;
+export const HERDR_RUN_MS = 15_000;
+export function inHerdr(on, bin, pane) {
+    return (on === '1' &&
+        typeof bin === 'string' &&
+        bin.startsWith('/') &&
+        typeof pane === 'string' &&
+        /^[A-Za-z0-9]{1,16}:[A-Za-z0-9]{1,16}$/.test(pane));
+}
+export function herdrCards(book) {
+    return Object.values(book.cards)
+        .filter((card) => card.state && isWaitingOnYou(card.state))
+        .sort((a, b) => (a.requestId < b.requestId ? -1 : a.requestId > b.requestId ? 1 : 0))
+        .map((card) => ({
+        requestId: card.requestId,
+        ...(card.title ? { title: card.title } : {}),
+        ...pressingOfCard(card),
+        at: card.learnedAt,
+    }));
+}
+export const herdrPayload = (book) => JSON.stringify({ name: book.name ?? null, cards: herdrCards(book) });
+export function herdrArgv(config, session) {
+    return [
+        `${config}/bin/pendingyou-hook`,
+        'herdr',
+        'report',
+        '--app',
+        'claude-code',
+        '--session',
+        session.id,
+        '--at',
+        String(Math.floor(session.at)),
     ];
 }
