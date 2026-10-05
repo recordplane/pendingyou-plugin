@@ -19,7 +19,7 @@
 // if Claude Code may call whoami without asking anyone, it does (no name), and when Pending You says Claude Code isn't
 // set up here, it starts one turn with the setup prompt once the session is idle. Once per session, in at most three
 // sessions, never two within ten minutes, and never again once whoami says it's set up (wake.ts's setupNeeded).
-import { argumentsOf, blockedNote, CLI_COPY, cardTool, checked, claimLease, dueCards, emptyBook, failed, holdOf, holdReply, isRefusal, isStale, isWaitingOnYou, learn, leaseHolder, momentOf, prompted, put, readBook, readSetup, resultObject, SETUP_AFTER_MS, SETUP_RETRY_MS, SETUP_SERVER, SETUP_TRIES, settle, setUpOf, setupNeeded, setupPrompt, stateOf, statusText, TICK_MS, told, toTell, untold, wakeText, } from "./wake.js";
+import { argumentsOf, blockedNote, CLI_COPY, cardTool, checked, claimLease, connectionOf, dueCards, emptyBook, failed, holdOf, holdReply, isRefusal, isStale, isWaitingOnYou, learn, leaseHolder, momentOf, prompted, put, readBook, readSetup, resultObject, SETUP_AFTER_MS, SETUP_RETRY_MS, SETUP_SERVER, SETUP_TRIES, settle, setUpOf, setupNeeded, setupPrompt, stateOf, statusText, TICK_MS, told, toTell, untold, wakeText, } from "./wake.js";
 /** After a prompt that didn't go, how long before the mod tries again. */
 const RETRY_MS = 60_000;
 /** What the mod holds while its module is loaded. The cards themselves are kept in the store. */
@@ -44,6 +44,8 @@ const live = {
     noted: new Set(),
     /** Pending You said Claude Code isn't set up here: start the setup turn once the session is idle. */
     setupDue: false,
+    /** The connection whoami named ("Claude Code on devbox"), for the setup turn's words. */
+    setupConnection: 'Claude Code',
 };
 const keyOf = (sessionId) => `session:${sessionId}`;
 /** A server Claude Code refuses checks on, while the session has a card there. */
@@ -172,7 +174,7 @@ async function deliverSetup($) {
     if (!setupNeeded(record, live.sessionId, now))
         return;
     await $.store.set('setup', prompted(record, live.sessionId, now));
-    $.prompt.submit({ text: setupPrompt() }).catch(() => { });
+    $.prompt.submit({ text: setupPrompt(live.setupConnection) }).catch(() => { });
 }
 /**
  * Asks Pending You whether Claude Code is set up here (whoami, no name, only when Claude Code allows it without asking),
@@ -187,7 +189,9 @@ async function checkSetup($, attempt) {
             return;
         let setUp = null;
         try {
-            setUp = setUpOf(resultObject(await $.mcp.call(SETUP_SERVER, 'whoami', {})));
+            const output = resultObject(await $.mcp.call(SETUP_SERVER, 'whoami', {}));
+            setUp = setUpOf(output);
+            live.setupConnection = connectionOf(output);
         }
         catch { }
         if (setUp === null) {

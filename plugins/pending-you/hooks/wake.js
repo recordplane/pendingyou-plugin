@@ -644,9 +644,22 @@ export const prompted = (record, sessionId, now) => ({
     lastAt: now,
 });
 /**
- * The turn that finishes setting up, as the session reads it: the sentence a person would say (the command line's
- * FINISH_SAY; a test holds them equal), then exactly what to do, so it needs nothing else.
+ * The connection whoami names ("Claude Code on Darin’s MacBook Pro"): its app's name, and the machine it signed in
+ * from; "Claude Code" when whoami's answer doesn't say.
  */
-export function setupPrompt() {
-    return 'Finish setting up Pending You: it’s connected here already. Call whoami with your name and guide true; report_setup with source claude-code, skillSaved true, hears instant and the guide’s skillVersion; then send your test question to its testAreaId. Nothing to add, install or approve. If whoami says app.setUp is true, another session did it: just introduce yourself.';
+export function connectionOf(output) {
+    const app = output && isObject(output.app) ? output.app : null;
+    const agent = output && isObject(output.agent) ? output.agent : null;
+    const name = typeof app?.name === 'string' && app.name.trim() ? app.name.trim() : 'Claude Code';
+    const machine = typeof agent?.machine === 'string' ? agent.machine.trim() : '';
+    return machine ? `${name} on ${machine}` : name;
+}
+/**
+ * The turn that finishes setting up (CLI 0.13.0), as the session reads it: exactly the three calls, as the command
+ * line's session-start line says them (its setupLine; a test holds them equal), so it needs nothing else. Before, it
+ * asked for whoami with guide true, whose answer is the whole guide (87,000 characters), and for testAreaId, which
+ * only report_setup's answer has: Pi spent about 20,000 tokens on that line on Darin's devbox.
+ */
+export function setupPrompt(connection = 'Claude Code') {
+    return `Pending You: ${connection} is connected, but its setup isn’t finished. Three calls, nothing to install or approve: 1. whoami with your name. If it says app.setUp is true, another session did this: stop. 2. report_setup with source claude-code, your name, skillSaved true, hears instant, and skillVersion set to whoami’s skill.latest. Its answer has a testAreaId. 3. post_request a short test question in that testAreaId, tell your person it’s on its way, and end your turn: you’re woken when they answer, so don’t ask them to type anything.`;
 }
