@@ -1,7 +1,7 @@
 // Generated from packages/claude-plugin/src/wake/register.ts in recordplane/pendingyou: edit that, then run
 // `pnpm --filter @pendingyou/claude-plugin generate`.
 
-import { argumentsOf, blockedNote, CLAIM_PREFIX, CLI_COPY, cardTool, checked, claimLease, cliConfigOf, connectionOf, dueCards, emptyBook, failed, folderOf, HANDED_FAST_MS, HANDED_READS, HERDR_EVERY_MS, HERDR_RUN_MS, handedDue, handedNext, handedOf, handedText, handedView, herdrArgv, herdrPayload, holdOf, holdReply, inHerdr, isRefusal, isStale, isWaitingOnYou, KEEP_MS, learn, leaseHolder, momentOf, originOf, PRESENCE_EVERY_MS, PRESENCE_RUN_MS, presenceArgv, prompted, put, readBook, readClaim, readSetup, readSince, resultObject, SETUP_AFTER_MS, SETUP_RETRY_MS, SETUP_SERVER, SETUP_TRIES, settle, setUpOf, setupNeeded, setupPrompt, stateOf, statusText, TICK_MS, takesHanded, told, toTell, untold, wakeText, } from "./wake.js";
+import { argumentsOf, blockedNote, CLAIM_PREFIX, CLI_COPY, cardTool, checked, claimLease, cliConfigOf, connectionOf, dueCards, emptyBook, failed, folderOf, HANDED_FAST_MS, HANDED_READS, HERDR_EVERY_MS, HERDR_RUN_MS, handedDue, handedNext, handedOf, handedText, handedView, herdrArgv, herdrPayload, holdOf, holdReply, inHerdr, isRefusal, isStale, isWaitingOnYou, KEEP_MS, learn, leaseHolder, loadedNote, loadedPath, momentOf, originOf, PRESENCE_EVERY_MS, PRESENCE_RUN_MS, presenceArgv, prompted, put, readBook, readClaim, readSetup, readSince, resultObject, SETUP_AFTER_MS, SETUP_RETRY_MS, SETUP_SERVER, SETUP_TRIES, settle, setUpOf, setupNeeded, setupPrompt, stateOf, statusText, TICK_MS, takesHanded, told, toTell, untold, wakeText, } from "./wake.js";
 const RETRY_MS = 60_000;
 const live = {
     me: '',
@@ -85,7 +85,7 @@ async function startHerdr($) {
     live.herdrTimer = null;
     live.herdr = null;
     live.herdrSaid = undefined;
-    const config = cliConfigOf($.plugin.root);
+    const config = cliConfigOf($.plugin.root, $.plugin.name);
     if (!config)
         return;
     const herdr = inHerdr(await $.env.get('HERDR_ENV'), await $.env.get('HERDR_BIN_PATH'), await $.env.get('HERDR_PANE_ID'));
@@ -319,6 +319,15 @@ async function folderOfSession($, cwd) {
         live.home = undefined;
     }
 }
+async function noteLoaded($) {
+    try {
+        const config = cliConfigOf($.plugin.root, $.plugin.name);
+        const path = config && live.sessionId ? loadedPath(config, live.sessionId) : null;
+        if (path)
+            await $.fs.write(path, loadedNote(await $.clock.now()));
+    }
+    catch { }
+}
 async function sayLive($) {
     try {
         const presence = live.presence;
@@ -338,7 +347,7 @@ async function startPresence($) {
     live.presenceTimer?.cancel();
     live.presenceTimer = null;
     live.presence = null;
-    const config = cliConfigOf($.plugin.root);
+    const config = cliConfigOf($.plugin.root, $.plugin.name);
     if (!config)
         return;
     let manifest = null;
@@ -359,6 +368,7 @@ async function start($, e) {
     live.book = readBook(await $.store.get(keyOf(live.sessionId)));
     freshHanded();
     await folderOfSession($, e.cwd);
+    await noteLoaded($);
     await claim($);
     live.timer?.cancel();
     live.timer = $.clock.every(TICK_MS, () => tick($));
@@ -377,6 +387,7 @@ async function switchSession($, e) {
     live.book = carried ?? readBook(await $.store.get(keyOf(id)));
     live.noted.clear();
     freshHanded();
+    await noteLoaded($);
     if (typeof e.cwd === 'string' && e.cwd)
         await folderOfSession($, e.cwd);
     if (carried)

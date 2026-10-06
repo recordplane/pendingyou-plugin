@@ -616,7 +616,15 @@ export function handedOf(output) {
         const updatedAt = text(request.updatedAt, 40);
         const cwd = text(request.cwd, 1000);
         return requestId && title && updatedAt
-            ? [{ requestId, title, updatedAt, ...(cwd ? { cwd } : {}) }]
+            ? [
+                {
+                    requestId,
+                    title,
+                    updatedAt,
+                    ...(cwd ? { cwd } : {}),
+                    ...(request.byName === true ? { byName: true } : {}),
+                },
+            ]
             : [];
     });
 }
@@ -641,7 +649,7 @@ export function inTaskFolder(folders, task, home) {
     });
 }
 export function takesHanded(handed, folders, home, now) {
-    if (!handed.cwd)
+    if (handed.byName || !handed.cwd)
         return true;
     if (folders.length === 0)
         return now - Date.parse(handed.updatedAt) >= HANDED_GRACE_MS;
@@ -760,10 +768,18 @@ export function setupPrompt(connection = 'Claude Code') {
 export const PRESENCE_EVERY_MS = 5 * 60_000;
 export const PRESENCE_RUN_MS = 15_000;
 const PRODUCTION = 'https://www.pendingyou.com';
-export function cliConfigOf(root) {
+export function cliConfigOf(root, name = CLI_COPY) {
+    if (name !== CLI_COPY)
+        return null;
     return (/^(.+)[\\/]cli[\\/][^\\/]+[\\/]node_modules[\\/]pendingyou[\\/]mod[\\/]?$/.exec(root)?.[1] ??
+        /^(.+)[\\/]mod[\\/]?$/.exec(root)?.[1] ??
         null);
 }
+const SESSION_FILE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/;
+export function loadedPath(config, sessionId) {
+    return SESSION_FILE.test(sessionId) ? `${config}/wake/sessions/${sessionId}.json` : null;
+}
+export const loadedNote = (at) => `${JSON.stringify({ at: Math.floor(at) })}\n`;
 export function originOf(manifest) {
     let parsed = manifest;
     if (typeof manifest === 'string')
