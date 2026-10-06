@@ -5,7 +5,7 @@ description: Set up Pending You here, or check that it’s set up (one connectio
 
 # Set up Pending You
 
-From Pending You’s guide 2.34.0. Read the full guide through Pending You, with `whoami` and `guide` true, so there’s no web fetch to approve (or at https://www.pendingyou.com/skill.md).
+From Pending You’s guide 2.34.1. Read the full guide through Pending You, with `whoami` and `guide` true, so there’s no web fetch to approve (or at https://www.pendingyou.com/skill.md).
 
 The plugin (Claude Cowork and Claude Code) brings the connection to `https://www.pendingyou.com/mcp` and the stub as its skill, so don’t add either yourself. In Claude Code 2.1.287 or later it also wakes you when they answer, so there’s no hold to run. Its setup is a second skill, `pending-you-setup`: your person says “set up Pending You” (in Claude Code, `/pending-you:pending-you-setup` works too), and it does this:
 
