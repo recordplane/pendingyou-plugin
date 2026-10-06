@@ -168,12 +168,19 @@ export function readBook(value) {
         cards,
     };
 }
+const listening = (card) => {
+    const state = card.state;
+    if (!state || isWaitingOnYou(state))
+        return true;
+    const moment = momentOf(state);
+    return moment !== card.told && moment !== card.seen;
+};
 export function put(book, card) {
     const cards = { ...book.cards, [card.requestId]: card };
     const all = Object.values(cards);
     if (all.length > MAX_CARDS)
         for (const old of all
-            .sort((a, b) => a.changedAt - b.changedAt)
+            .sort((a, b) => Number(listening(a)) - Number(listening(b)) || a.changedAt - b.changedAt)
             .slice(0, all.length - MAX_CARDS))
             delete cards[old.requestId];
     return { ...book, cards };
