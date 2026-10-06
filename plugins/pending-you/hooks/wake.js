@@ -116,7 +116,15 @@ export function stateOf(output) {
     const version = count(output.version);
     if (!status || !turn || version === undefined)
         return null;
-    return { status, turn, version, cursor: typeof output.cursor === 'string' ? output.cursor : '' };
+    const given = isObject(output.answer) ? output.answer.handled : output.handled;
+    const handled = given === 'self' || given === 'leave' ? given : undefined;
+    return {
+        status,
+        turn,
+        version,
+        cursor: typeof output.cursor === 'string' ? output.cursor : '',
+        ...(handled ? { handled } : {}),
+    };
 }
 export const emptyBook = (now = 0) => ({ v: 1, updatedAt: now, cards: {} });
 export function readBook(value) {
@@ -368,6 +376,16 @@ function line(card) {
         case 'resolved':
             return [`${titled(card)} is already handled`, 'nothing to do'];
         case 'answered':
+            if (state.handled === 'self')
+                return [
+                    `your person will handle ${titled(card)} themselves`,
+                    `call ${get} to read it, don’t act on it, then ack_answer with its version and an outcome like “Left to you”`,
+                ];
+            if (state.handled === 'leave')
+                return [
+                    `your person said to leave ${titled(card)}`,
+                    `call ${get} to read it, do nothing for it (no reply, no follow-up), then ack_answer with its version and an outcome like “Left it”`,
+                ];
             return [
                 `your person answered ${titled(card)}`,
                 `call ${get}, act on their words, then ack_answer with its version and a one-line outcome`,
@@ -388,7 +406,8 @@ const capital = (sentence) => sentence.charAt(0).toUpperCase() + sentence.slice(
 export function wakeText(cards) {
     const asked = cards.some((card) => card.state?.turn === 'agent' &&
         !isClosed(card.state.status) &&
-        card.state.status !== 'delegated');
+        card.state.status !== 'delegated' &&
+        !card.state.handled);
     const reopen = asked
         ? ' If they asked you something or you need more from them, reply_in_thread with reopen instead.'
         : '';
