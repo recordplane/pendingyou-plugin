@@ -31,6 +31,7 @@ const READS = new Set([
     'hand_back',
 ]);
 export const HANDED_READS = new Set(['get_request', 'answer_delegated', 'hand_back']);
+export const APPROVED_DRAFT_NOTICE = 'The approved words are in get_request’s answer.approvedDrafts: send them exactly.';
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 const parseJson = (text) => {
     try {
@@ -118,12 +119,16 @@ export function stateOf(output) {
         return null;
     const given = isObject(output.answer) ? output.answer.handled : output.handled;
     const handled = given === 'self' || given === 'leave' ? given : undefined;
+    const approvedDraft = isObject(output.answer)
+        ? Array.isArray(output.answer.approvedDrafts) && output.answer.approvedDrafts.length > 0
+        : output.approvedDraft === true;
     return {
         status,
         turn,
         version,
         cursor: typeof output.cursor === 'string' ? output.cursor : '',
         ...(handled ? { handled } : {}),
+        ...(approvedDraft ? { approvedDraft: true } : {}),
     };
 }
 export const emptyBook = (now = 0) => ({ v: 1, updatedAt: now, cards: {} });
@@ -395,7 +400,7 @@ function line(card) {
                 ];
             return [
                 `your person answered ${titled(card)}`,
-                `call ${get}, act on their words, then ack_answer with its version and a one-line outcome`,
+                `call ${get}, act on their words, then ack_answer with its version and a one-line outcome${state.approvedDraft ? `. ${APPROVED_DRAFT_NOTICE.slice(0, -1)}` : ''}`,
             ];
         case 'delegated':
             return [
