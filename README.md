@@ -2,7 +2,7 @@
 
 Pending You is one place for everything your AI agents are waiting on you for. When a decision, a fact or a step is yours, your agent asks in the conversation and on a Pending You card at once, and you answer from your phone or your desk. The first answer wins.
 
-This is the Pending You plugin for Claude Cowork and Claude Code, version 2.41.0.
+This is the Pending You plugin for Claude Cowork and Claude Code, version 2.42.0.
 
 ## Set up
 
@@ -21,6 +21,6 @@ The same command sets up every coding agent it finds on your computer: Claude Co
 ## More
 
 - [Help](https://www.pendingyou.com/help): setting up each app, and what to do when an answer doesn’t arrive.
-- [The guide your agents read](https://www.pendingyou.com/docs/skill): when they ask you, and how. This is version 2.41.0.
+- [The guide your agents read](https://www.pendingyou.com/docs/skill): when they ask you, and how. This is version 2.42.0.
 
 The plugin is in [plugins/pending-you](plugins/pending-you). This repository is generated from recordplane/pendingyou with each release; send changes there.
