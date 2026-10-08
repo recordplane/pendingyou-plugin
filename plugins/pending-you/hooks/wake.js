@@ -8,6 +8,7 @@ export const RECENT_MS = 30 * 60_000;
 export const MAX_BACKOFF_MS = 15 * 60_000;
 export const HINT_FLOOR_MS = 5000;
 export const BLOCKED_MS = 60_000;
+export const FRESH_MS = 10_000;
 export const KEEP_MS = 7 * 24 * 60 * 60_000;
 export const MAX_CARDS = 50;
 export const LEASE_MS = 60_000;
@@ -231,6 +232,13 @@ function tracked(book, facts, now) {
         nextAt: now + FAST_MS,
     });
 }
+function followedUp(book, follows, now) {
+    const card = follows ? book.cards[follows] : undefined;
+    if (!card)
+        return book;
+    const heard = card.state && isReady(card.state) ? { seen: momentOf(card.state) } : {};
+    return put(book, { ...card, ...heard, nextAt: now });
+}
 export function learn(book, call, now) {
     const { server, tool, input, output } = call;
     if (!output)
@@ -251,7 +259,7 @@ export function learn(book, call, now) {
             if (!status || !OPEN.has(status) || version === undefined)
                 return next;
             const title = text(input.title, 400);
-            return tracked(next, {
+            const posted = tracked(next, {
                 requestId,
                 server,
                 ...(name ? { name } : {}),
@@ -259,6 +267,7 @@ export function learn(book, call, now) {
                 pressing: pressingFrom(tool, input, card),
                 state: { status, turn: 'you', version, cursor: card?.state?.cursor ?? '' },
             }, now);
+            return tool === 'post_request' ? followedUp(posted, requestIdOf(input.follows), now) : posted;
         }
         case 'reply_in_thread': {
             const reopen = isObject(input.reopen) ? input.reopen : null;
@@ -311,7 +320,7 @@ export function checked(card, output, now) {
     if (!isReady(state) && pollAfter !== undefined && pollAfter * 1000 < wait)
         wait = Math.max(HINT_FLOOR_MS, pollAfter * 1000 + 1000);
     const { failures: _failures, ...rest } = card;
-    return { ...rest, state, changedAt, nextAt: now + wait };
+    return { ...rest, state, changedAt, nextAt: now + wait, checkedAt: now };
 }
 export function failed(card, now, blocked) {
     if (blocked)
@@ -332,13 +341,16 @@ export function needsTelling(card) {
     const state = card.state;
     if (!state || !isReady(state))
         return false;
+    if (state.status === 'resolved')
+        return false;
     const moment = momentOf(state);
     if (moment === card.told || moment === card.seen)
         return false;
-    if ((state.status === 'resolved' || state.status === 'cancelled') && (card.told || card.seen))
+    if (state.status === 'cancelled' && (card.told || card.seen))
         return false;
     return true;
 }
+export const isFresh = (card, now) => card.checkedAt !== undefined && now - card.checkedAt <= FRESH_MS;
 export const toTell = (book) => Object.values(book.cards)
     .filter(needsTelling)
     .sort((a, b) => a.changedAt - b.changedAt);
@@ -385,8 +397,6 @@ function line(card) {
             ];
         case 'cancelled':
             return [`${titled(card)} was withdrawn`, 'nothing to do'];
-        case 'resolved':
-            return [`${titled(card)} is already handled`, 'nothing to do'];
         case 'answered':
             if (state.handled === 'self')
                 return [

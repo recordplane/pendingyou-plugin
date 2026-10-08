@@ -1,7 +1,7 @@
 // Generated from packages/claude-plugin/src/wake/register.ts in recordplane/pendingyou: edit that, then run
 // `pnpm --filter @pendingyou/claude-plugin generate`.
 
-import { argumentsOf, blockedNote, CLAIM_PREFIX, CLI_COPY, cardTool, checked, claimLease, cliConfigOf, connectionOf, dueCards, emptyBook, failed, folderOf, HANDED_FAST_MS, HANDED_READS, HERDR_EVERY_MS, HERDR_RUN_MS, handedDue, handedNext, handedOf, handedText, handedView, herdrArgv, herdrPayload, holdOf, holdReply, inHerdr, isRefusal, isStale, isWaitingOnYou, KEEP_MS, learn, leaseHolder, loadedNote, loadedPath, momentOf, originOf, PRESENCE_EVERY_MS, PRESENCE_RUN_MS, presenceArgv, prompted, put, readBook, readClaim, readSetup, readSince, resultObject, SETUP_AFTER_MS, SETUP_RETRY_MS, SETUP_SERVER, SETUP_TRIES, settle, setUpOf, setupNeeded, setupPrompt, stateOf, statusText, TICK_MS, takesHanded, told, toTell, untold, wakeText, } from "./wake.js";
+import { argumentsOf, blockedNote, CLAIM_PREFIX, CLI_COPY, cardTool, checked, claimLease, cliConfigOf, connectionOf, dueCards, emptyBook, failed, folderOf, HANDED_FAST_MS, HANDED_READS, HERDR_EVERY_MS, HERDR_RUN_MS, handedDue, handedNext, handedOf, handedText, handedView, herdrArgv, herdrPayload, holdOf, holdReply, inHerdr, isFresh, isRefusal, isStale, isWaitingOnYou, KEEP_MS, learn, leaseHolder, loadedNote, loadedPath, momentOf, originOf, PRESENCE_EVERY_MS, PRESENCE_RUN_MS, presenceArgv, prompted, put, readBook, readClaim, readSetup, readSince, resultObject, SETUP_AFTER_MS, SETUP_RETRY_MS, SETUP_SERVER, SETUP_TRIES, settle, setUpOf, setupNeeded, setupPrompt, stateOf, statusText, TICK_MS, takesHanded, told, toTell, untold, wakeText, } from "./wake.js";
 const RETRY_MS = 60_000;
 const live = {
     me: '',
@@ -141,10 +141,19 @@ async function check($, requestId) {
 async function deliver($) {
     if (live.busy)
         return false;
-    const cards = toTell(live.book);
-    if (cards.length === 0 || (await $.clock.now()) < live.quietUntil)
+    if (toTell(live.book).length === 0 || (await $.clock.now()) < live.quietUntil)
         return false;
     if (!(await claim($)))
+        return false;
+    const before = await $.clock.now();
+    for (const card of toTell(live.book))
+        if (!isFresh(card, before))
+            await check($, card.requestId);
+    if (live.busy)
+        return false;
+    const now = await $.clock.now();
+    const cards = toTell(live.book).filter((card) => isFresh(card, now));
+    if (cards.length === 0)
         return false;
     live.book = told(live.book, cards);
     await save($);
