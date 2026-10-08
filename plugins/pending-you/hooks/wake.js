@@ -421,7 +421,7 @@ export function wakeText(cards) {
         card.state.status !== 'delegated' &&
         !card.state.handled);
     const reopen = asked
-        ? ' If they asked you something or you need more from them, reply_in_thread with reopen instead.'
+        ? ' If you need more from them, or the next step, post a new card with follows: that card’s requestId; never reopen.'
         : '';
     if (cards.length === 1) {
         const [happened, todo] = line(cards[0]);
