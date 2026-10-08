@@ -391,12 +391,12 @@ function line(card) {
             if (state.handled === 'self')
                 return [
                     `your person will handle ${titled(card)} themselves`,
-                    `call ${get} to read it, don’t act on it, then ack_answer with its version and an outcome like “Left to you”`,
+                    `call ${get} to read it, then close it out: take no action on it, leave things as they are and don’t follow up; ack_answer with its version and an outcome like “Left to you”`,
                 ];
             if (state.handled === 'leave')
                 return [
-                    `your person said to leave ${titled(card)}`,
-                    `call ${get} to read it, do nothing for it (no reply, no follow-up), then ack_answer with its version and an outcome like “Left it”`,
+                    `your person won’t do ${titled(card)}`,
+                    `call ${get} to read it, then close it out: don’t do it for them and don’t follow up; ack_answer with its version and an outcome like “Skipped”`,
                 ];
             return [
                 `your person answered ${titled(card)}`,
