@@ -23,6 +23,6 @@ Claude sends Pending You the questions it asks you (a title, a short summary, op
 ## More
 
 - [Help](https://www.pendingyou.com/help): setting up each app, and what to do when an answer doesn’t arrive.
-- [The guide your agents read](https://www.pendingyou.com/docs/skill): when they ask you, and how. This is version 2.50.0.
+- [The guide your agents read](https://www.pendingyou.com/docs/skill): when they ask you, and how. This is version 2.52.0.
 
-Generated from Pending You’s guide 2.50.0.
+Generated from Pending You’s guide 2.52.0.
