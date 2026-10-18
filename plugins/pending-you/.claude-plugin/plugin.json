@@ -1,7 +1,7 @@
 {
   "name": "pending-you",
   "displayName": "Pending You",
-  "version": "2.53.1",
+  "version": "2.53.2",
   "description": "One place for everything your AI agents are waiting on you for. When a decision is yours, Claude asks in the conversation and on a Pending You card at once, and the first answer wins.",
   "author": {
     "name": "RecordPlane",
@@ -10,6 +10,7 @@
   "homepage": "https://www.pendingyou.com",
   "repository": "https://github.com/recordplane/pendingyou-plugin",
   "license": "Apache-2.0",
+  "privacyPolicyUrl": "https://www.pendingyou.com/privacy",
   "keywords": [
     "pending-you",
     "questions",
