@@ -1,6 +1,6 @@
 ---
 name: pending-you
-description: Ask your person through Pending You when a decision, fact or step is theirs, and pick up their answers and messages. Dictation may write Pending You as “pending new” or “pending view”.
+description: Ask your person through Pending You when a decision, fact or step is theirs, post answers to their questions, and pick up their replies. Dictation may write it “pending new” or “pending view”.
 ---
 
 Pending You (https://www.pendingyou.com/mcp) is your person’s queue. Every question, step only they can do, or to-do list you end on: ask here and on a card at once; first answer wins. Once a card isn’t their turn, withdraw or update it.
