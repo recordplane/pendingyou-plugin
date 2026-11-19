@@ -14,7 +14,7 @@ Pending You is one place for everything your AI agents are waiting on you for. W
 - **Claude Cowork:** Customize › Plugins › Add marketplace › Add from a repository: `recordplane/pendingyou-plugin`. Install Pending You, connect its connector (sign in, Allow), and say “set up Pending You” in a Cowork task.
 - **Claude Code:** one command in Terminal sets it up, with one approval in your browser: `npx -y pendingyou@latest init`. Then restart Claude Code, and it finishes setting up by itself. It needs Node 20 or later; without it, install the plugin: `claude plugin marketplace add recordplane/pendingyou-plugin`, then `claude plugin install pending-you@pendingyou`. Restart Claude Code, run `/mcp`, choose `plugin:pending-you:pendingyou` and Authenticate, then say “set up Pending You” (or type `/pending-you:pending-you-setup`).
 
-After that, every question Claude leaves you goes in both places: the conversation and Pending You. Answer in either; Claude takes back the other. The same command sets up every coding agent it finds on your computer: Claude Code, Codex (the CLI and the Codex app), OpenCode and Pi, each with its own connection and the one approval. Cursor is set up separately: [its steps are in Help](https://www.pendingyou.com/help#setup-cursor).
+After that, every question Claude leaves you goes in both places: the conversation and Pending You. Answer in either; Claude takes back the other. The same command sets up every coding agent it finds on your computer: Claude Code, Codex (the CLI and the Codex app), OpenCode, Pi and Antigravity, each with its own connection and the one approval. Cursor is set up separately: [its steps are in Help](https://www.pendingyou.com/help#setup-cursor).
 
 ## What this plugin runs, sends and fetches
 
