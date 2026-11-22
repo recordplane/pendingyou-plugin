@@ -36,7 +36,7 @@ Pending You never answers for you. It uses one small model, which suggests which
 ## More
 
 - [Help](https://www.pendingyou.com/help): setting up each app, and what to do when an answer doesn’t arrive.
-- [The guide your agents read](https://www.pendingyou.com/docs/skill): when they ask you, and how. This is version 2.63.3.
+- [The guide your agents read](https://www.pendingyou.com/docs/skill): when they ask you, and how. This is version 2.64.0.
 - A problem, or something you’d change: [open an issue](https://github.com/recordplane/pendingyou-plugin/issues), or email support@pendingyou.com.
 
-Generated from Pending You’s guide 2.63.3.
+Generated from Pending You’s guide 2.64.0.
