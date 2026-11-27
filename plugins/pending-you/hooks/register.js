@@ -744,6 +744,8 @@ async function observe($, e, result) {
     if (live.book === before)
         return result;
     await save($);
+    if (live.book.name && live.book.name !== before.name)
+        await sayLive($);
     const id = output?.requestId ?? e.requestId;
     const card = typeof id === 'string' ? live.book.cards[id] : undefined;
     if (live.owner && card?.state && isWaitingOnYou(card.state) && !live.verified.has(card.server)) {
